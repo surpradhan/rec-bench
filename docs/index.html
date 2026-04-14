@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RecBench — MovieLens 100K Algorithm Showdown</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@300;400;500;600&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --gold:    #F5C518;
+      --gold-dim: #c9a01a;
+      --dark:    #08080E;
+      --dark2:   #0f0f1a;
+      --dark3:   #16161f;
+      --dark4:   #1e1e2a;
+      --text:    #e8e8f0;
+      --muted:   #7a7a9a;
+      --red:     #e05252;
+      --green:   #52c0a0;
+      --radius:  6px;
+
+      /* model colors */
+      --c-hybrid:  #F5C518;
+      --c-als:     #e07b32;
+      --c-usercf:  #5b9bd5;
+      --c-itemcf:  #7b6fd4;
+      --c-pop:     #52b788;
+      --c-svd:     #d45bb0;
+      --c-ncf:     #d47a5b;
+      --c-cb:      #6b9e7a;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--dark);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Film strip top border ─────────────────────────────── */
+    .filmstrip {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 18px;
+      background: var(--gold);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      overflow: hidden;
+    }
+    .filmstrip::before, .filmstrip::after {
+      content: '';
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      height: 10px;
+      width: 100%;
+      background: repeating-linear-gradient(
+        90deg,
+        var(--dark) 0px,
+        var(--dark) 12px,
+        transparent 12px,
+        transparent 22px
+      );
+    }
+
+    /* ── Nav ───────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 18px; left: 0; right: 0;
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      height: 56px;
+      background: rgba(8,8,14,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(245,197,24,0.15);
+    }
+    .nav-logo {
+      font-family: 'Courier Prime', monospace;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--gold);
+      letter-spacing: 0.18em;
+      text-decoration: none;
+    }
+    .nav-logo span { color: var(--text); }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--gold); }
+
+    /* ── Hero ──────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      padding-top: 74px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding-left: 24px;
+      padding-right: 24px;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(245,197,24,0.07) 0%, transparent 70%),
+        var(--dark);
+      position: relative;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23F5C518' fill-opacity='0.025'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+    .now-showing {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--gold);
+      color: var(--dark);
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 2px;
+      margin-bottom: 24px;
+    }
+    .now-showing::before { content: '▶'; font-size: 0.6rem; }
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.6rem, 6vw, 5rem);
+      font-weight: 900;
+      line-height: 1.08;
+      max-width: 820px;
+      margin-bottom: 20px;
+    }
+    h1 em {
+      font-style: normal;
+      color: var(--gold);
+    }
+    .hero-sub {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 560px;
+      margin-bottom: 48px;
+      line-height: 1.7;
+    }
+
+    /* stat counters */
+    .stats-row {
+      display: flex;
+      gap: 0;
+      margin-bottom: 52px;
+      border: 1px solid rgba(245,197,24,0.2);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--dark2);
+    }
+    .stat {
+      padding: 22px 36px;
+      text-align: center;
+      flex: 1;
+      border-right: 1px solid rgba(245,197,24,0.12);
+    }
+    .stat:last-child { border-right: none; }
+    .stat-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--gold);
+      display: block;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .cta-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+      cursor: pointer;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .btn-primary {
+      background: var(--gold);
+      color: var(--dark);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+
+    /* scroll hint */
+    .scroll-hint {
+      position: absolute;
+      bottom: 32px;
+      left: 50%; transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      animation: bounce 2s infinite;
+    }
+    .scroll-hint svg { width: 18px; height: 18px; }
+    @keyframes bounce {
+      0%,100% { transform: translateX(-50%) translateY(0); }
+      50%      { transform: translateX(-50%) translateY(6px); }
+    }
+
+    /* ── Ticker ────────────────────────────────────────────── */
+    .ticker-wrap {
+      background: var(--gold);
+      overflow: hidden;
+      padding: 10px 0;
+      white-space: nowrap;
+    }
+    .ticker-track {
+      display: inline-block;
+      animation: ticker 30s linear infinite;
+    }
+    .ticker-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Courier Prime', monospace;
+      font-weight: 700;
+      font-size: 0.82rem;
+      color: var(--dark);
+      padding: 0 32px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .ticker-dot {
+      width: 5px; height: 5px;
+      background: var(--dark);
+      border-radius: 50%;
+      opacity: 0.4;
+    }
+    @keyframes ticker {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* ── Sections ──────────────────────────────────────────── */
+    section {
+      padding: 96px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 10px;
+    }
+    h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+      font-weight: 700;
+      margin-bottom: 14px;
+      line-height: 1.2;
+    }
+    .section-intro {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 620px;
+      margin-bottom: 56px;
+      line-height: 1.75;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(245,197,24,0.1);
+      margin: 0;
+    }
+
+    /* ── Leaderboard ───────────────────────────────────────── */
+    #leaderboard { max-width: 1100px; }
+
+    .tier-label {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      padding: 6px 0 10px;
+      border-top: 1px solid rgba(245,197,24,0.18);
+      margin-top: 24px;
+    }
+    .tier-label:first-of-type { margin-top: 0; border-top: none; }
+
+    .lb-row {
+      display: grid;
+      grid-template-columns: 28px 180px 1fr 90px 90px 70px;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 20px;
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.04);
+      transition: border-color 0.2s, background 0.2s;
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    .lb-row.visible {
+      animation: slideIn 0.4s forwards;
+    }
+    @keyframes slideIn {
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .lb-row.winner {
+      background: rgba(245,197,24,0.06);
+      border-color: rgba(245,197,24,0.22);
+    }
+    .lb-row:hover { border-color: rgba(245,197,24,0.3); background: var(--dark3); }
+
+    .lb-rank {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: right;
+    }
+    .lb-rank.gold { color: var(--gold); font-weight: 700; font-size: 1rem; }
+
+    .lb-name {
+      font-weight: 600;
+      font-size: 0.92rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .model-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .lb-bar-wrap {
+      background: rgba(255,255,255,0.06);
+      border-radius: 100px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .lb-bar {
+      height: 100%;
+      border-radius: 100px;
+      width: 0;
+      transition: width 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .lb-ndcg {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-align: right;
+    }
+    .lb-prec {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: right;
+    }
+    .lb-time {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-align: right;
+    }
+    .lb-header {
+      display: grid;
+      grid-template-columns: 28px 180px 1fr 90px 90px 70px;
+      gap: 16px;
+      padding: 8px 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .lb-header span:nth-child(4),
+    .lb-header span:nth-child(5),
+    .lb-header span:nth-child(6) { text-align: right; }
+
+    /* ── Director's Notes ──────────────────────────────────── */
+    .findings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .finding-card {
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 28px;
+      transition: border-color 0.2s, transform 0.2s;
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    .finding-card.visible {
+      animation: fadeUp 0.5s forwards;
+    }
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .finding-card:hover {
+      border-color: rgba(245,197,24,0.25);
+      transform: translateY(-3px);
+    }
+    .finding-icon {
+      font-size: 1.6rem;
+      margin-bottom: 14px;
+    }
+    .finding-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+      line-height: 1.35;
+    }
+    .finding-title strong { color: var(--gold); }
+    .finding-body {
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .finding-body code {
+      font-family: 'Courier Prime', monospace;
+      color: var(--gold);
+      background: rgba(245,197,24,0.08);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ── Breakdown chart ───────────────────────────────────── */
+    .breakdown-wrap {
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .breakdown-img {
+      width: 100%;
+      display: block;
+    }
+    .chart-caption {
+      padding: 16px 24px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      line-height: 1.6;
+    }
+    .chart-caption strong { color: var(--text); }
+
+    /* ── Protocol table ────────────────────────────────────── */
+    .proto-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    .proto-table th, .proto-table td {
+      text-align: left;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .proto-table th {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--dark3);
+    }
+    .proto-table td:first-child { color: var(--muted); font-size: 0.82rem; }
+    .proto-table td:last-child {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.85rem;
+      color: var(--gold);
+    }
+    .proto-table tr:last-child td { border-bottom: none; }
+    .proto-wrap {
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    footer {
+      background: var(--dark2);
+      border-top: 1px solid rgba(245,197,24,0.12);
+      text-align: center;
+      padding: 48px 24px 32px;
+    }
+    .footer-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    .footer-tagline {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-bottom: 28px;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      list-style: none;
+      margin-bottom: 32px;
+    }
+    .footer-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.8rem;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--gold); }
+    .footer-credits {
+      font-size: 0.72rem;
+      color: rgba(122,122,154,0.5);
+      font-family: 'Courier Prime', monospace;
+    }
+
+    /* ── Reveal utility ────────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s, transform 0.6s; }
+    .reveal.visible { opacity: 1; transform: none; }
+
+    /* ── Responsive ────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      nav { padding: 0 20px; }
+      .nav-links { display: none; }
+      .stats-row { flex-wrap: wrap; }
+      .stat { flex: 1 1 45%; }
+      .lb-row, .lb-header {
+        grid-template-columns: 24px 140px 1fr 70px;
+      }
+      .lb-row > *:nth-child(5),
+      .lb-row > *:nth-child(6),
+      .lb-header > *:nth-child(5),
+      .lb-header > *:nth-child(6) { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Film strip -->
+<div class="filmstrip" aria-hidden="true"></div>
+
+<!-- Nav -->
+<nav>
+  <a class="nav-logo" href="#">REC<span>·</span>BENCH</a>
+  <ul class="nav-links">
+    <li><a href="#leaderboard">Results</a></li>
+    <li><a href="#findings">Findings</a></li>
+    <li><a href="#breakdown">Breakdown</a></li>
+    <li><a href="#protocol">Protocol</a></li>
+    <li><a href="https://github.com/surabhisnath/recommendation-system-benchmark" target="_blank" rel="noopener">GitHub ↗</a></li>
+  </ul>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="now-showing">Now Showing</div>
+  <h1>8 Algorithms.<br/><em>One Fair Fight.</em></h1>
+  <p class="hero-sub">
+    A rigorous benchmark of recommendation algorithms on MovieLens&nbsp;100K —
+    same split, same metrics, same evaluation protocol for everyone.
+    No cherry-picking. Roll credits.
+  </p>
+
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-num" data-target="100000">0</span>
+      <span class="stat-label">Ratings</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num" data-target="943">0</span>
+      <span class="stat-label">Users</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num" data-target="1682">0</span>
+      <span class="stat-label">Movies</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num" data-target="8">0</span>
+      <span class="stat-label">Algorithms</span>
+    </div>
+  </div>
+
+  <div class="cta-row">
+    <a href="#leaderboard" class="btn btn-primary">▶ See Results</a>
+    <a href="https://github.com/surabhisnath/recommendation-system-benchmark" target="_blank" rel="noopener" class="btn btn-secondary">⭐ GitHub</a>
+  </div>
+
+  <div class="scroll-hint" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+    Scroll
+  </div>
+</div>
+
+<!-- Ticker -->
+<div class="ticker-wrap" aria-hidden="true">
+  <div class="ticker-track" id="ticker">
+    <span class="ticker-item"><span class="ticker-dot"></span>🥇 Hybrid · NDCG@10 = 0.1166</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>🥈 ALS · NDCG@10 = 0.1070</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>🥉 UserCF · NDCG@10 = 0.0752</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>ItemCF · NDCG@10 = 0.0693</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Popularity · NDCG@10 = 0.0638</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>SVD · NDCG@10 = 0.0632</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>NCF · NDCG@10 = 0.0552</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>ContentBased · NDCG@10 = 0.0082</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>39% of test users unserved by all models</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Primary metric: NDCG@10 · Relevance ≥ 4 stars</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Time-based per-user split · 80 / 10 / 10 %</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>🥇 Hybrid · NDCG@10 = 0.1166</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>🥈 ALS · NDCG@10 = 0.1070</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>🥉 UserCF · NDCG@10 = 0.0752</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>ItemCF · NDCG@10 = 0.0693</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Popularity · NDCG@10 = 0.0638</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>SVD · NDCG@10 = 0.0632</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>NCF · NDCG@10 = 0.0552</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>ContentBased · NDCG@10 = 0.0082</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>39% of test users unserved by all models</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Primary metric: NDCG@10 · Relevance ≥ 4 stars</span>
+    <span class="ticker-item"><span class="ticker-dot"></span>Time-based per-user split · 80 / 10 / 10 %</span>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- Leaderboard -->
+<section id="leaderboard">
+  <div class="section-label">Box Office Results</div>
+  <h2>The Final Rankings</h2>
+  <p class="section-intro">
+    All models retrained on train + val with tuned hyperparameters, evaluated on
+    a held-out test set. The test set was never seen during training or tuning.
+  </p>
+
+  <div class="lb-header">
+    <span>#</span>
+    <span>Model</span>
+    <span>NDCG@10</span>
+    <span>NDCG@10</span>
+    <span>P@10</span>
+    <span>Train</span>
+  </div>
+
+  <div class="tier-label">⭐ Top Performers</div>
+
+  <div class="lb-row winner" data-bar="100" data-color="var(--c-hybrid)" data-delay="0">
+    <span class="lb-rank gold">①</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-hybrid)"></span>Hybrid</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-hybrid)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-hybrid)">0.1166</span>
+    <span class="lb-prec">0.0673</span>
+    <span class="lb-time">17s</span>
+  </div>
+
+  <div class="lb-row" data-bar="91.7" data-color="var(--c-als)" data-delay="80">
+    <span class="lb-rank">②</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-als)"></span>ALS</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-als)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-als)">0.1070</span>
+    <span class="lb-prec">0.0586</span>
+    <span class="lb-time">0.7s</span>
+  </div>
+
+  <div class="tier-label">📊 Neighbourhood Methods</div>
+
+  <div class="lb-row" data-bar="64.5" data-color="var(--c-usercf)" data-delay="160">
+    <span class="lb-rank">③</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-usercf)"></span>UserCF</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-usercf)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-usercf)">0.0752</span>
+    <span class="lb-prec">0.0481</span>
+    <span class="lb-time">0.1s</span>
+  </div>
+
+  <div class="lb-row" data-bar="59.4" data-color="var(--c-itemcf)" data-delay="240">
+    <span class="lb-rank">④</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-itemcf)"></span>ItemCF</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-itemcf)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-itemcf)">0.0693</span>
+    <span class="lb-prec">0.0413</span>
+    <span class="lb-time">0.3s</span>
+  </div>
+
+  <div class="tier-label">📉 Baseline Pack</div>
+
+  <div class="lb-row" data-bar="54.7" data-color="var(--c-pop)" data-delay="320">
+    <span class="lb-rank">⑤</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-pop)"></span>Popularity</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-pop)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-pop)">0.0638</span>
+    <span class="lb-prec">0.0390</span>
+    <span class="lb-time">0.07s</span>
+  </div>
+
+  <div class="lb-row" data-bar="54.2" data-color="var(--c-svd)" data-delay="400">
+    <span class="lb-rank">⑥</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-svd)"></span>SVD</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-svd)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-svd)">0.0632</span>
+    <span class="lb-prec">0.0371</span>
+    <span class="lb-time">0.4s</span>
+  </div>
+
+  <div class="lb-row" data-bar="47.3" data-color="var(--c-ncf)" data-delay="480">
+    <span class="lb-rank">⑦</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-ncf)"></span>NCF (NeuMF)</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-ncf)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-ncf)">0.0552</span>
+    <span class="lb-prec">0.0383</span>
+    <span class="lb-time">21s</span>
+  </div>
+
+  <div class="lb-row" data-bar="7.0" data-color="var(--c-cb)" data-delay="560">
+    <span class="lb-rank">⑧</span>
+    <span class="lb-name"><span class="model-dot" style="background:var(--c-cb)"></span>ContentBased</span>
+    <div class="lb-bar-wrap"><div class="lb-bar" style="background:var(--c-cb)"></div></div>
+    <span class="lb-ndcg" style="color:var(--c-cb)">0.0082</span>
+    <span class="lb-prec">0.0051</span>
+    <span class="lb-time">0.3s</span>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- Directors Notes / Findings -->
+<section id="findings">
+  <div class="section-label">Director's Notes</div>
+  <h2>Five Things We Learned</h2>
+  <p class="section-intro">
+    The numbers tell a story. Here's what the data actually says about how
+    recommendation algorithms behave on a small, dense, real-world dataset.
+  </p>
+
+  <div class="findings-grid">
+
+    <div class="finding-card" data-delay="0">
+      <div class="finding-icon">🏆</div>
+      <div class="finding-title"><strong>Hybrid wins clearly</strong> — ranking loss + content features</div>
+      <div class="finding-body">
+        LightFM with WARP loss directly optimises ranking rather than rating
+        prediction. The 19-genre item features add signal that pure collaborative
+        methods lack. Result: <code>+0.0096</code> NDCG@10 over the next best model.
+      </div>
+    </div>
+
+    <div class="finding-card" data-delay="80">
+      <div class="finding-icon">⚡</div>
+      <div class="finding-title"><strong>ALS</strong> is the best pure CF model — and 24× faster than Hybrid</div>
+      <div class="finding-body">
+        Implicit-feedback matrix factorisation handles the 7.8% matrix density
+        far better than neighbourhood methods. Train time: <code>0.7s</code>.
+        NDCG@10: <code>0.1070</code>. Outstanding efficiency frontier.
+      </div>
+    </div>
+
+    <div class="finding-card" data-delay="160">
+      <div class="finding-icon">🧠</div>
+      <div class="finding-title"><strong>NCF underperforms</strong> despite being most complex</div>
+      <div class="finding-body">
+        MovieLens 100K is too small for NeuMF. The tuner landed all
+        hyperparameters at lower bounds — the model overfits at any reasonable
+        capacity. Deep learning needs more data before it earns its complexity.
+      </div>
+    </div>
+
+    <div class="finding-card" data-delay="240">
+      <div class="finding-icon">📉</div>
+      <div class="finding-title">Every model <strong>fails on long-tail items</strong></div>
+      <div class="finding-body">
+        Tail NDCG@10 is near zero across the board. All models learn to recommend
+        popular items regardless of architecture. NCF scores exactly
+        <code>0.0000</code> on torso and tail buckets.
+      </div>
+    </div>
+
+    <div class="finding-card" data-delay="320">
+      <div class="finding-icon">🚫</div>
+      <div class="finding-title"><strong>39% of test users</strong> are completely unserved</div>
+      <div class="finding-body">
+        No model found a relevant item in the top-10 for 368 out of 943 test
+        users. This ceiling matters more than rank-order differences between
+        models — it's a hard wall on achievable utility.
+      </div>
+    </div>
+
+    <div class="finding-card" data-delay="400">
+      <div class="finding-icon">🧊</div>
+      <div class="finding-title"><strong>ALS handles cold users</strong> most gracefully</div>
+      <div class="finding-body">
+        In the user-activity breakdown, ALS shows the smallest degradation
+        from active → cold users. UserCF is most sensitive to cold-start,
+        with the steepest NDCG@10 drop across tiers.
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- Breakdown chart -->
+<section id="breakdown">
+  <div class="section-label">Behind the Lens</div>
+  <h2>Where Models Win and Lose</h2>
+  <p class="section-intro">
+    Aggregate NDCG@10 hides the real story. Three post-hoc analyses expose
+    how each model performs across item popularity, user activity, and
+    head-to-head match-ups.
+  </p>
+
+  <div class="breakdown-wrap reveal">
+    <img src="assets/breakdown_overview.png" alt="Breakdown analysis: popularity buckets, user activity tiers, win-loss" class="breakdown-img" />
+    <div class="chart-caption">
+      <strong>Left heatmap:</strong> NDCG@10 by item popularity bucket (head / torso / tail) — every model degrades sharply toward the tail.
+      <strong>Right heatmap:</strong> NDCG@10 by user activity tier (cold / moderate / active).
+      <strong>Bottom:</strong> Win/loss — which model achieves the highest per-user NDCG@10? 39% of users are unserved by all models.
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- Protocol -->
+<section id="protocol">
+  <div class="section-label">Production Notes</div>
+  <h2>Evaluation Protocol</h2>
+  <p class="section-intro">
+    A fair benchmark lives or dies by its evaluation protocol. Here's exactly
+    what was done — no hidden choices.
+  </p>
+
+  <div class="proto-wrap reveal">
+    <table class="proto-table">
+      <thead>
+        <tr><th>Property</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Dataset</td><td>MovieLens 100K (943 users × 1,682 items)</td></tr>
+        <tr><td>Split strategy</td><td>Time-based per user</td></tr>
+        <tr><td>Train / val / test</td><td>~80% / 10% / 10% (per user)</td></tr>
+        <tr><td>Relevance threshold</td><td>Rating ≥ 4</td></tr>
+        <tr><td>Primary metric</td><td>NDCG@10</td></tr>
+        <tr><td>K values</td><td>5, 10</td></tr>
+        <tr><td>MAP denominator</td><td>min(|relevant|, K)</td></tr>
+        <tr><td>Users with no relevant test items</td><td>Scored 0 (not excluded)</td></tr>
+        <tr><td>Final training data</td><td>Train + val combined</td></tr>
+        <tr><td>Tuning target</td><td>Val NDCG@10 (test never seen)</td></tr>
+        <tr><td>Tuning method</td><td>Bayesian optimisation (scikit-optimize GP)</td></tr>
+        <tr><td>Random state</td><td>42 (fixed throughout)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-logo">RecBench</div>
+  <div class="footer-tagline">MovieLens 100K · 8 Algorithms · One Fair Fight</div>
+  <ul class="footer-links">
+    <li><a href="https://github.com/surabhisnath/recommendation-system-benchmark" target="_blank" rel="noopener">GitHub</a></li>
+    <li><a href="https://grouplens.org/datasets/movielens/100k/" target="_blank" rel="noopener">MovieLens Dataset</a></li>
+    <li><a href="#leaderboard">Results</a></li>
+    <li><a href="#protocol">Protocol</a></li>
+  </ul>
+  <div class="footer-credits">
+    © 2025 · Built with Python, PyTorch, LightFM, scikit-optimize · Evaluated on 943 users
+  </div>
+</footer>
+
+<script>
+  // ── Counter animation ─────────────────────────────────────
+  function animateCounter(el) {
+    const target = parseInt(el.dataset.target, 10);
+    const duration = 1600;
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const value = Math.round(eased * target);
+      el.textContent = value.toLocaleString();
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  const countersStarted = { value: false };
+  const heroObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting && !countersStarted.value) {
+        countersStarted.value = true;
+        document.querySelectorAll('[data-target]').forEach(animateCounter);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  const statsRow = document.querySelector('.stats-row');
+  if (statsRow) heroObserver.observe(statsRow);
+
+  // ── Leaderboard bar animation ─────────────────────────────
+  const lbObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const rows = entry.target.querySelectorAll('.lb-row');
+        rows.forEach(row => {
+          const bar   = row.querySelector('.lb-bar');
+          const pct   = row.dataset.bar;
+          const delay = parseInt(row.dataset.delay || 0, 10);
+          row.classList.add('visible');
+          row.style.animationDelay = delay + 'ms';
+          if (bar) setTimeout(() => { bar.style.width = pct + '%'; }, delay + 200);
+        });
+        lbObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  const lbSection = document.getElementById('leaderboard');
+  if (lbSection) lbObserver.observe(lbSection);
+
+  // ── Finding cards animation ───────────────────────────────
+  const cardObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const cards = entry.target.querySelectorAll('.finding-card');
+        cards.forEach(card => {
+          const delay = parseInt(card.dataset.delay || 0, 10);
+          setTimeout(() => card.classList.add('visible'), delay);
+        });
+        cardObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  const findingsGrid = document.querySelector('.findings-grid');
+  if (findingsGrid) cardObserver.observe(findingsGrid);
+
+  // ── Generic reveal ────────────────────────────────────────
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08 });
+
+  document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+  // ── Ticker duplicate for seamless loop ───────────────────
+  // Already duplicated in HTML for loop; no JS needed
+</script>
+
+</body>
+</html>
